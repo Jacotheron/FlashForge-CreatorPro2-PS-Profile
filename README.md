@@ -27,15 +27,38 @@ This project would not have been possible without help from the community. I wou
 Before installation, please note that:
 
 * In order to generate the binary blob, and enable ditto/mirror printing, we need to post-process the gcode.
-* The post-process script is written in Python 3 (I am using 3.8) and thus requires Python 3. In addition Image support comes from Pillow, which is also required to be installed.
-* Everything was tested with PrusaSlicer 2.4.0 - it may work with older versions, but that is not guaranteed.
+* The post-process script is written in Python 3 (I used 3.8 for development, thus any newer should work) and thus requires Python 3. In addition Image support comes from Pillow, which is also required to be installed.
+* Everything was tested with PrusaSlicer 2.4.0 - it may work with older versions, but that is not guaranteed. PS 2.4.1 have since been released and is known to work.
+
+### Python & Pillow Installation
+
+If you need to install Python head over to [Python Downloads](https://www.python.org/downloads/) and download the relevant installer for your Operating System. 
+1. Simply run the installer,
+2. Select the Customize option, 
+3. Choose a path where it should be installed (ideally you want this to be short, for example C:/Python3.x/) 
+4. Ensure you check the box for "Add Python3.x to PATH"
+5. Let the installation complete.
+
+We want to use a short path, so that we can easily use it [full instructions on how it is to be setup](https://manual.slic3r.org/advanced/post-processing).
+
+We now want to install Pillow for Python [Pillow Installation](https://pillow.readthedocs.io/en/stable/installation.html).
+Using Command Prompt run the following 2 commands:
+
+```
+python -m pip install --upgrade pip
+python -m pip install --upgrade Pillow
+```
+
+PIP is a package manager for Python, allowing us to simply install Pillow in the right place, ready to be used.
+
+### Vendor File and Post Processor Installation
 
 Now on to the installation
 
 1. This project contains, at time of writing, 2 folders, each with 1 file. Download the whole project
 2. The file "vendor/FlashForge.ini" (mentioned below as Vendor file) should be placed inside of the PrusaSlicer's AppData folder (typically on Windows at "C:/Users/<username\>/AppData/Roaming/PrusaSlicer/vendor/")
 3. The file "post-processor/ff-creator-post-processor.py" (Post Process Script) can be placed anywhere on your computer; I like to keep it in a folder "post-processor" also in the PrusaSlicer AppData. Make a note of the file's location, as we need to edit the Vendor file to use this for post-processing.
-4. Open the Vendor file in your favorite plain text editor (Notepad works, I use Notepad++); go to the line that starts with "post_process" and edit it to point to your Post Process Script (note the use of double back-slashes "\\\\\\" for Windows as folder separators). If the file path contains any space, it should be preceeded by an exclamation mark "!" (also ensure that it load your correct python version). Save the file.
+4. Open the Vendor file ("vendor/FlashForge.ini") in your favorite plain text editor (Notepad works, I use Notepad++); go to the line that starts with "post_process" and edit it to point to your Post Process Script (note the use of double back-slashes "\\\\\\" for Windows as folder separators). If the file path contains any space, it should be preceeded by an exclamation mark "!" (also ensure that it load your correct python version, directly from where it is installed). Save the file.
 5. You can now open PrusaSlicer, and using its "Configuration > Configuration Wizard" add the FlashForge:
 	1. Go to Other Vendors, and select "FlashForge"
 	2. Go to "FlashForge FFF" and select the 0.4mm CreatorPro2 (sorry we don't currently have an image for it)
@@ -46,6 +69,51 @@ Now on to the installation
 If you did everything well, you should be able to slice a new object for printing, and have the post-processor run (open the sliced file in a text editor to confirm that it did indeed run and included the binary blob).
 
 **This is beta software at this stage. Do not leave the printer unattended. Also ensure that the type of printing works as expected on something small, before spending many hours printing something only to have it fail due to some unexpected issue.**
+
+## Using this profile
+In PrusaSlicer we have 3 sets of dropdowns (Print Settings, Filament and Printer).
+
+1. Start with the printer, and select the option you would like (this profile defines the options mentioned at the features):
+	1. Dual Extrusion:
+		1. Typically used when you either have 2 colors that should be used in the same job, of 2 different materials that should be used in the same job.
+		2. This printer allows the Print Settings selections for Soluble supports.
+	3. Ditto:
+		1. Typically used to print 2x identical parts as defined. Both heads are used simultaneously and moves are identical. We only define the Right hand side of the build plate, left side will be identical.
+	2. Mirror:
+		1. Typically used to print 2x almost identical parts. Like Ditto, Mirror uses both heads, but the left head does the oposite in X than what the right head does.
+		2. This allows you to print a left and right side of something, by only importing the right side (saving a lot of time).
+	3. Right Only / Left Only
+		1. This is used in print jobs where you only need one head for the whole print. 
+		2. By alternating the use of left and right extruders for print job, you can save time with loading of the next print's color.
+3. Then select the print settings you want to use:
+	1. The included presets range between 0.05mm and 0.3mm layer heights; choose the option you would like.
+	2. If using Dual, you can also select one of the Soluble options.
+	3. If Using Dual, you can select the Draft Shield options, which helps to reduce ooze blobs on the print.
+4. Now select the filament options to use.
+5. Import your model into the slicer and let it slice.
+6. Always confirm the slice to be successful and Export the Gcode. A small black window may appear for a moment - that is normal and is the post processor doing its job.
+
+## Notes
+
+* In PrusaSlicer the first extruder (and Filament selector) is always the Right Extruder (in firmware T0), unless you are using the Left Only printing mode.
+* While I have attempted to test everything, there may be issues. Test out the most common setups to ensure they will work for you.
+* Regarding the maximum printable dimensions, I usually work with a 5mm "keep-out" zone on all sides - this ensures that the print will succeed regardless of tiny differences and other inaccuracies. You are welcome to see exactly what your machine is capable of (my estimates are you might get a few extra mm on some sides).
+
+## Troubleshooting
+
+### "File open failed" on printer
+This issue may commonly happens when the filename is too long. If you get this error, first try shortening the file, and then try printing it again.
+
+I did not test where the limit is, but typically if I shorten it, it works.
+
+If the issue persists, it may be an incorrect header, please report this.
+
+### Print stopping just after completing the Start Gcode
+This issue should be rare, but in the instances where it happened to me, it was with either Ditto or Mirror modes, and the CalPad was not in the file. If this happens to you, please check to confirm that the CalPad is in the file.
+
+### Other issues
+Please report other issues using the issue tracker here on GitHub, provide as much detail as possible. We will try it out and see how it can be resolved.
+
 
 ## The .gx file format
 Here is a technical breakdown of the file format, specifically regarding the binary blob. Locations are mentioned as their Hex location in the file.
@@ -144,3 +212,14 @@ A brief description of what the script does:
 	- write the gcode data to the file, encoded as UTF8
 * Exit
 
+## Licensing 
+
+Copyright 2022 Jacotheron
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
