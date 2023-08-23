@@ -911,8 +911,9 @@ calPad_content = """;calPad A start Z0.20
 ;calPad SB end
 M109"""
 
+output_filename = input_filename.replace('.gcode','') #get rid of any pesky .gcode extensions; Windows 11 prefers to save the filename as .gx.gcode no matter what we do.
 
-our_file = open(sys.argv[1], 'rb+')
+our_file = open(output_filename, 'wb+') #since the output filename may be different (see above), use WRITE only.
 for binary_data in header_hex:
     our_file.write(binary_data)
     
