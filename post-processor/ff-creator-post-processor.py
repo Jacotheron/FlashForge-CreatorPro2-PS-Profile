@@ -920,7 +920,7 @@ if use_calpads: #only required for ditto and mirror
     file_data = file_data.replace("M109", calPad_content, 1)
 
 our_file.write(file_data.encode('utf-8')) # add the actual gcode for the printer
-
+our_file.close()
 
 output_filename = input_filename.replace('.gcode','') #get rid of any pesky .gcode extensions; Windows 11 prefers to save the filename as .gx.gcode no matter what we do.
 if output_filename != input_filename:
