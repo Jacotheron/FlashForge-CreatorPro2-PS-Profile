@@ -18,6 +18,7 @@ import base64
 from io import BytesIO
 from PIL import Image ## remember to install Pillow
 from struct import *
+import os #for getting the size of the file; and therefre being able to have a percent complete...
 
 thumbnail_start = re.compile('^; thumbnail begin [a-x0-9]+ [0-9]+')
 thumbnail_end = re.compile('^; thumbnail end')
@@ -71,9 +72,33 @@ file_data = "\n"
 
 image_extract_status = 0 #1 means we are extracting; 2 means we are done extracting
 
+input_filename = sys.argv[1]
+input_file_size = os.path.getsize(input_filename)
+
+#for print statements
+bytes_read = 0
+percent = 0
+
 #this variable to is to ensure it still work for single extruder prints
 print_have_started = 0
-for line in fileinput.input(inplace=True):
+#inplace=True for in-place editing .... but no print statements
+for line in fileinput.input(files=(input_filename),inplace=True):
+    #print statements inside a fileinput.input(inplace=True) work a little differently....   hence the sending of prints to stderr
+    #https://stackoverflow.com/questions/61713742/how-to-print-on-the-console-when-using-inplace-true
+    
+    
+    #calculate percent completion and print it to the screen; for the piece of mind of the user
+    bytes_read += len(line)
+    new_percent = int(bytes_read/input_file_size*100)
+    if new_percent > percent:
+        #https://stackoverflow.com/questions/3002085/how-to-print-out-status-bar-and-percentage
+        #sys.stdout or sys.stderr allows the last print to be clread with \r
+        sys.stderr.write('\r') #clear last percent print
+        sys.stderr.write(str(new_percent)+"%")
+        sys.stderr.flush()
+
+        percent = new_percent
+    
     #print(line, end="") #for now we keep all lines
     file_data += line #store in memory, since we already have to get everything in memory
     if image_extract_status == 0:
