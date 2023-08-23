@@ -68,6 +68,7 @@ right_extruder_temp = 0 # 0x34 - 2 bytes
 left_extruder_temp = 0 # 0x36 - 2 bytes
 thumbnail = 0
 
+#the approach here: we load the entire file into memory.
 file_data = "\n"
 
 image_extract_status = 0 #1 means we are extracting; 2 means we are done extracting
@@ -79,6 +80,10 @@ input_file_size = os.path.getsize(input_filename)
 bytes_read = 0
 percent = 0
 
+#for debugging information, in terms of which line various items are on
+totline = 0
+numline = 0
+
 #this variable to is to ensure it still work for single extruder prints
 print_have_started = 0
 #inplace=True for in-place editing .... but no print statements
@@ -86,6 +91,8 @@ for line in fileinput.input(files=(input_filename),inplace=True):
     #print statements inside a fileinput.input(inplace=True) work a little differently....   hence the sending of prints to stderr
     #https://stackoverflow.com/questions/61713742/how-to-print-on-the-console-when-using-inplace-true
     
+    totline += 1
+    numline += 1
     
     #calculate percent completion and print it to the screen; for the piece of mind of the user
     bytes_read += len(line)
@@ -103,10 +110,14 @@ for line in fileinput.input(files=(input_filename),inplace=True):
     file_data += line #store in memory, since we already have to get everything in memory
     if image_extract_status == 0:
         if thumbnail_start.match(line):
+            sys.stderr.write("Thumbnail Start Match!  Lines:"+str(numline)+"\n")
+            numline = 0
             image_extract_status = 1
             continue # got o next line
     if image_extract_status == 1:
         if thumbnail_end.match(line):
+            sys.stderr.write("Thumbnail End Match!  Lines:"+str(numline)+"\n")
+            numline = 0
             image_extract_status = 2
             thumbnail_image = Image.open(BytesIO(base64.decodebytes(thumbnail_b64_content.encode('ascii')))).convert("RGB") #load as image and ensure it is RGB (1 byte per pixel)
             thumbnail_b64_content = "" # clear to save memory
@@ -120,6 +131,9 @@ for line in fileinput.input(files=(input_filename),inplace=True):
             thumbnail_b64_content += m.group(1)
     else:
         if extruder_match.match(line): # this should match early in the file
+            sys.stderr.write("Extruder Match!  Lines:"+str(numline)+"\n")
+            numline = 0
+
             if extruder_match.match(line).group(1) == "1":
                 extr_left_active = True
                 if extr_right_active:
@@ -130,6 +144,9 @@ for line in fileinput.input(files=(input_filename),inplace=True):
                     extr_both_active = True
             continue
         if extruder_mode_match.match(line): # this should match early in the file
+            sys.stderr.write("Extruder Mode Match!  Lines:"+str(numline)+"\n")
+            numline = 0
+
             use_calpads = True
             if extruder_mode_match.match(line).group(1) == "1": # mirror
                 extruder_mode = 35
@@ -137,6 +154,9 @@ for line in fileinput.input(files=(input_filename),inplace=True):
                 extruder_mode = 19
             continue
         if setting_print_time.match(line):
+            sys.stderr.write("Setting Print Time Match!  Lines:"+str(numline)+"\n")
+            numline = 0
+
             time = setting_print_time.match(line).group(1).split() # this match in nnh nnm nns
             seconds = 0
             for part in time:
@@ -151,6 +171,9 @@ for line in fileinput.input(files=(input_filename),inplace=True):
             print_time_in_seconds = seconds
             continue
         if setting_filament_usage.match(line):
+            sys.stderr.write("Setting Filament Match!  Lines:"+str(numline)+"\n")
+            numline = 0
+
             string = setting_filament_usage.match(line).group(1).split(", ") # this match in nnh nnm nns
             for part in string:
                 if not extr_both_active and extr_left_active:
@@ -161,6 +184,9 @@ for line in fileinput.input(files=(input_filename),inplace=True):
                     filament_usage_in_mm_right = int(float(part)) # might be only part or first loop
             continue
         if setting_temps.match(line):
+            sys.stderr.write("Setter Temps Match!  Lines:"+str(numline)+"\n")
+            numline = 0
+
             string = setting_temps.match(line).group(1).split(",") # this match in nnh nnm nns
             for part in string:
                 if not extr_both_active and extr_left_active:
@@ -171,18 +197,30 @@ for line in fileinput.input(files=(input_filename),inplace=True):
                     right_extruder_temp = int(part) # might be only part or first loop
             continue
         if setting_layer_height.match(line):
+            sys.stderr.write("Setting Layer Height Match!  Lines:"+str(numline)+"\n")
+            numline = 0
+
             layer_height_microns = int(float(setting_layer_height.match(line).group(1)) * 1000)
             continue
         if setting_shells.match(line):
+            sys.stderr.write("Setting Shells Match!  Lines:"+str(numline)+"\n")
+            numline = 0
+
             number_perimeter_shells = int(setting_shells.match(line).group(1))
             continue
         if setting_speed.match(line):
+            sys.stderr.write("Setting Speed Match!  Lines:"+str(numline)+"\n")
+            numline = 0
+
             print_speed = int(setting_speed.match(line).group(1))
             continue
         if setting_bed_temp.match(line):
+            sys.stderr.write("Setting Bed Match!  Lines:"+str(numline)+"\n")
+            numline = 0
+
             platform_temp = int(setting_bed_temp.match(line).group(1))
             continue
-    
+print() #so the next line comes out cleanly    
 fileinput.close() # ensure it is closed, so that we can read to it in binary mode
 # since we store the data in memory, and did not write back, file is empty, easy to prepend header
 
