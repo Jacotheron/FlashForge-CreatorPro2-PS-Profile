@@ -1019,4 +1019,4 @@ if use_calpads: #only required for ditto and mirror
     file_data = file_data.replace("M109", calPad_content, 1)
 
 our_file.write(file_data.encode('utf-8')) # add the actual gcode for the printer
-
+our_file.close()
