@@ -31,15 +31,21 @@ extr_left_active = False
 extr_both_active = False
 use_calpads = False
 
-extruder_match = re.compile('^M6 T([0-9]+)') #get which extruders are active
-extruder_mode_match = re.compile('^M109 T([0-9])') #match for ditto or mirror
-setting_print_time = re.compile('^; estimated printing time \(normal mode\) = ([0-9hms ]*)')
-setting_filament_usage = re.compile('^; filament used \[mm\] = ([0-9., ]*)')
-setting_layer_height = re.compile('^; layer_height = ([0-9. ]*)')
-setting_shells = re.compile('^; perimeters = ([0-9]*)')
-setting_speed = re.compile('^; perimeter_speed = ([0-9]*)')
-setting_bed_temp = re.compile('^; bed_temperature = ([0-9]*)')
-setting_temps = re.compile('^; temperature = ([0-9, ]*)')
+#each of these is a minimalistic datastructure 
+#the first variable - ant - is whether or not the match has been achieved. 0 for no, 1 for yes (except for the image, which requires more settings -- #1 means we are extracting; 2 means we are done extracting
+#the second variable - a re.compile - is the actual test that is run.
+
+extruder_match = [0,re.compile('^M6 T([0-9]+)')] #get which extruders are active
+extruder_mode_match = [0,re.compile('^M109 T([0-9])')] #match for ditto or mirror
+setting_print_time = [0,re.compile('^; estimated printing time \(normal mode\) = ([0-9hms ]*)')]
+setting_filament_usage = [0,re.compile('^; filament used \[mm\] = ([0-9., ]*)')]
+setting_layer_height = [0,re.compile('^; layer_height = ([0-9. ]*)')]
+setting_shells = [0,re.compile('^; perimeters = ([0-9]*)')]
+setting_speed = [0,re.compile('^; perimeter_speed = ([0-9]*)')]
+setting_bed_temp = [0,re.compile('^; bed_temperature = ([0-9]*)')]
+setting_temps = [0,re.compile('^; temperature = ([0-9, ]*)')]
+
+
 
 matching_hours = re.compile('([0-9]+)h')
 matching_minutes = re.compile('([0-9]+)m')
@@ -130,11 +136,15 @@ for line in fileinput.input(files=(input_filename),inplace=True):
             m = thumbnail_content_re.match(line)
             thumbnail_b64_content += m.group(1)
     else:
-        if extruder_match.match(line): # this should match early in the file
+        #for each condition; check if it's not been matched yet.  If it hasn't been matched yet; then do the regex check
+    
+        #extruder match is special - there may be more than one extruder match.  Therefore, don't check the previous state; we realy do need to ingest all the data.
+        if extruder_match[1].match(line): # this should match early in the file
+            extruder_match[0] = True
             sys.stderr.write("Extruder Match!  Lines:"+str(numline)+"\n")
             numline = 0
 
-            if extruder_match.match(line).group(1) == "1":
+            if extruder_match[1].match(line).group(1) == "1":
                 extr_left_active = True
                 if extr_right_active:
                     extr_both_active = True
@@ -143,21 +153,23 @@ for line in fileinput.input(files=(input_filename),inplace=True):
                 if extr_left_active:
                     extr_both_active = True
             continue
-        if extruder_mode_match.match(line): # this should match early in the file
+        if not extruder_mode_match[0] and extruder_mode_match[1].match(line): # this should match early in the file
+            extruder_mode_match[0] = True
             sys.stderr.write("Extruder Mode Match!  Lines:"+str(numline)+"\n")
             numline = 0
 
             use_calpads = True
-            if extruder_mode_match.match(line).group(1) == "1": # mirror
+            if extruder_mode_match[1].match(line).group(1) == "1": # mirror
                 extruder_mode = 35
             else: # 2 = ditto
                 extruder_mode = 19
             continue
-        if setting_print_time.match(line):
+        if not setting_print_time[0] and setting_print_time[1].match(line):
+            setting_print_time[0] = True
             sys.stderr.write("Setting Print Time Match!  Lines:"+str(numline)+"\n")
             numline = 0
 
-            time = setting_print_time.match(line).group(1).split() # this match in nnh nnm nns
+            time = setting_print_time[1].match(line).group(1).split() # this match in nnh nnm nns
             seconds = 0
             for part in time:
                 if matching_hours.match(part):
@@ -170,11 +182,12 @@ for line in fileinput.input(files=(input_filename),inplace=True):
                     seconds += int(matching_seconds.match(part).group(1))
             print_time_in_seconds = seconds
             continue
-        if setting_filament_usage.match(line):
+        if not setting_filament_usage[0] and setting_filament_usage[1].match(line):
+            setting_filament_usage[0] = True
             sys.stderr.write("Setting Filament Match!  Lines:"+str(numline)+"\n")
             numline = 0
 
-            string = setting_filament_usage.match(line).group(1).split(", ") # this match in nnh nnm nns
+            string = setting_filament_usage[1].match(line).group(1).split(", ") # this match in nnh nnm nns
             for part in string:
                 if not extr_both_active and extr_left_active:
                     filament_usage_in_mm_left = int(float(part)) # should be the only part
@@ -183,11 +196,12 @@ for line in fileinput.input(files=(input_filename),inplace=True):
                 else:
                     filament_usage_in_mm_right = int(float(part)) # might be only part or first loop
             continue
-        if setting_temps.match(line):
+        if not setting_temps[0] and setting_temps[1].match(line):
+            setting_temps[0] = True
             sys.stderr.write("Setter Temps Match!  Lines:"+str(numline)+"\n")
             numline = 0
 
-            string = setting_temps.match(line).group(1).split(",") # this match in nnh nnm nns
+            string = setting_temps[1].match(line).group(1).split(",") # this match in nnh nnm nns
             for part in string:
                 if not extr_both_active and extr_left_active:
                     left_extruder_temp = int(part) # should be the only part
@@ -196,29 +210,33 @@ for line in fileinput.input(files=(input_filename),inplace=True):
                 else:
                     right_extruder_temp = int(part) # might be only part or first loop
             continue
-        if setting_layer_height.match(line):
+        if not setting_layer_height[0] and setting_layer_height[1].match(line):
+            setting_layer_height[0] = True
             sys.stderr.write("Setting Layer Height Match!  Lines:"+str(numline)+"\n")
             numline = 0
 
-            layer_height_microns = int(float(setting_layer_height.match(line).group(1)) * 1000)
+            layer_height_microns = int(float(setting_layer_height[1].match(line).group(1)) * 1000)
             continue
-        if setting_shells.match(line):
+        if not setting_shells[0] and setting_shells[1].match(line):
+            setting_shells[0] = True
             sys.stderr.write("Setting Shells Match!  Lines:"+str(numline)+"\n")
             numline = 0
 
-            number_perimeter_shells = int(setting_shells.match(line).group(1))
+            number_perimeter_shells = int(setting_shells[1].match(line).group(1))
             continue
-        if setting_speed.match(line):
+        if not setting_speed[0] and setting_speed[1].match(line):
+            setting_speed[0] = True
             sys.stderr.write("Setting Speed Match!  Lines:"+str(numline)+"\n")
             numline = 0
 
-            print_speed = int(setting_speed.match(line).group(1))
+            print_speed = int(setting_speed[1].match(line).group(1))
             continue
-        if setting_bed_temp.match(line):
+        if not setting_bed_temp[0] and setting_bed_temp[1].match(line):
+            setting_bed_temp[0] = True
             sys.stderr.write("Setting Bed Match!  Lines:"+str(numline)+"\n")
             numline = 0
 
-            platform_temp = int(setting_bed_temp.match(line).group(1))
+            platform_temp = int(setting_bed_temp[1].match(line).group(1))
             continue
 print() #so the next line comes out cleanly    
 fileinput.close() # ensure it is closed, so that we can read to it in binary mode
