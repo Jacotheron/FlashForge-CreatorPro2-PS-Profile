@@ -1014,6 +1014,7 @@ M109"""
 our_file = open(input_filename, 'wb') #since the output filename may be different (see above), use WRITE only.
 for binary_data in header_hex:
     our_file.write(binary_data)
+our_file.write("\n".encode('utf-8')) #force it onto a newline
     
 if use_calpads: #only required for ditto and mirror
     file_data = file_data.replace("M109", calPad_content, 1)
