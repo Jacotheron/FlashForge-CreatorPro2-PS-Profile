@@ -18,6 +18,7 @@ import base64
 from io import BytesIO
 from PIL import Image ## remember to install Pillow
 from struct import *
+import os #for getting the size of the file; and therefre being able to have a percent complete...
 
 thumbnail_start = re.compile('^; thumbnail begin [a-x0-9]+ [0-9]+')
 thumbnail_end = re.compile('^; thumbnail end')
@@ -30,15 +31,21 @@ extr_left_active = False
 extr_both_active = False
 use_calpads = False
 
-extruder_match = re.compile('^M6 T([0-9]+)') #get which extruders are active
-extruder_mode_match = re.compile('^M109 T([0-9])') #match for ditto or mirror
-setting_print_time = re.compile('^; estimated printing time \(normal mode\) = ([0-9hms ]*)')
-setting_filament_usage = re.compile('^; filament used \[mm\] = ([0-9., ]*)')
-setting_layer_height = re.compile('^; layer_height = ([0-9. ]*)')
-setting_shells = re.compile('^; perimeters = ([0-9]*)')
-setting_speed = re.compile('^; perimeter_speed = ([0-9]*)')
-setting_bed_temp = re.compile('^; bed_temperature = ([0-9]*)')
-setting_temps = re.compile('^; temperature = ([0-9, ]*)')
+#each of these is a minimalistic datastructure 
+#the first variable - ant - is whether or not the match has been achieved. 0 for no, 1 for yes (except for the image, which requires more settings -- #1 means we are extracting; 2 means we are done extracting
+#the second variable - a re.compile - is the actual test that is run.
+
+extruder_match = [0,re.compile('^M6 T([0-9]+)')] #get which extruders are active
+extruder_mode_match = [0,re.compile('^M109 T([0-9])')] #match for ditto or mirror
+setting_print_time = [0,re.compile('^; estimated printing time \(normal mode\) = ([0-9hms ]*)')]
+setting_filament_usage = [0,re.compile('^; filament used \[mm\] = ([0-9., ]*)')]
+setting_layer_height = [0,re.compile('^; layer_height = ([0-9. ]*)')]
+setting_shells = [0,re.compile('^; perimeters = ([0-9]*)')]
+setting_speed = [0,re.compile('^; perimeter_speed = ([0-9]*)')]
+setting_bed_temp = [0,re.compile('^; bed_temperature = ([0-9]*)')]
+setting_temps = [0,re.compile('^; temperature = ([0-9, ]*)')]
+
+
 
 matching_hours = re.compile('([0-9]+)h')
 matching_minutes = re.compile('([0-9]+)m')
@@ -67,21 +74,60 @@ right_extruder_temp = 0 # 0x34 - 2 bytes
 left_extruder_temp = 0 # 0x36 - 2 bytes
 thumbnail = 0
 
+#the approach here: we load the entire file into memory.
 file_data = "\n"
 
 image_extract_status = 0 #1 means we are extracting; 2 means we are done extracting
 
+input_filename = sys.argv[1]
+
+#for print statements
+bytes_read = 0
+percent = 0
+
+#for debugging information, in terms of which line various items are on
+numline = 0
+
 #this variable to is to ensure it still work for single extruder prints
 print_have_started = 0
-for line in fileinput.input(inplace=True):
-    #print(line, end="") #for now we keep all lines
-    file_data += line #store in memory, since we already have to get everything in memory
-    if image_extract_status == 0:
-        if thumbnail_start.match(line):
-            image_extract_status = 1
-            continue # got o next line
+
+
+#read once, for sole purpose of getting everything into memory
+
+file = open(input_filename, "r")
+file_data_lines = file.readlines()
+file_data = "".join(line for line in file_data_lines)  #join the whole thing together as a string; I will need this for later
+file.close()
+
+input_file_size = len(file_data_lines) #length of file, in terms of the number of lines.  Don't need to count it out byte-by-byte here...
+
+#last_line = 0 #used for deugging purposes; uncomment all of the last_line to learn how often the regex's are being called and where they're located.
+
+#go through the data forwards; loooking ONLY for the stuff that I know is usually at the front.
+for linenumber,line in enumerate(file_data_lines):
+    
+    #calculate percent completion and print it to the screen; for the piece of mind of the user
+    if linenumber%10000 == 0:
+        #https://stackoverflow.com/questions/3002085/how-to-print-out-status-bar-and-percentage
+        #sys.stdout or sys.stderr allows the last print to be clread with \r
+
+        new_percent = int( linenumber/input_file_size*50)
+        sys.stderr.write('\r') #clear last percent print
+        sys.stderr.write(str(new_percent)+"%")
+        #sys.stderr.write(str(new_percent)+"%" + " Regex Status: " + str(setting_print_time[0]) + " " + str(setting_filament_usage[0]) + " " + str(setting_temps[0]) + " " + str(setting_layer_height[0]) + " " + str(setting_shells[0]) + " " + str(setting_speed[0]) + " " + str(setting_bed_temp[0]) + "\n")
+        sys.stderr.flush()
+    
+
+    if image_extract_status == 0 and thumbnail_start.match(line):
+        #sys.stderr.write("\n"+"Thumbnail Start Match!  Lines:"+str(linenumber - last_line)+"\n")
+        #last_line = linenumber
+        image_extract_status = 1
+        continue # got to next line
     if image_extract_status == 1:
+        #i am currently in the image
         if thumbnail_end.match(line):
+            #sys.stderr.write("\n"+"Thumbnail End Match!  Lines:"+str(linenumber - last_line)+"\n")
+            #last_line = linenumber
             image_extract_status = 2
             thumbnail_image = Image.open(BytesIO(base64.decodebytes(thumbnail_b64_content.encode('ascii')))).convert("RGB") #load as image and ensure it is RGB (1 byte per pixel)
             thumbnail_b64_content = "" # clear to save memory
@@ -89,13 +135,20 @@ for line in fileinput.input(inplace=True):
             thumbnail_image.save(thumbnail_bytes, format="BMP")
             thumbnail = thumbnail_bytes.getvalue()
             
-            continue #go to nect line
+            continue #go to next line
         else:
             m = thumbnail_content_re.match(line)
             thumbnail_b64_content += m.group(1)
     else:
-        if extruder_match.match(line): # this should match early in the file
-            if extruder_match.match(line).group(1) == "1":
+        #not in the image at all
+    
+        #extruder match is special - there may be more than one extruder match.  Therefore, don't check the previous state; we realy do need to ingest all the data.
+        if extruder_match[1].match(line): # this should match early in the file
+            extruder_match[0] = True
+            #sys.stderr.write("\n"+"Extruder Match!  Lines:"+str(linenumber - last_line)+"\n")
+            #last_line = linenumber
+
+            if extruder_match[1].match(line).group(1) == "1":
                 extr_left_active = True
                 if extr_right_active:
                     extr_both_active = True
@@ -104,61 +157,131 @@ for line in fileinput.input(inplace=True):
                 if extr_left_active:
                     extr_both_active = True
             continue
-        if extruder_mode_match.match(line): # this should match early in the file
+        if not extruder_mode_match[0] and extruder_mode_match[1].match(line): # this should match early in the file.  It should also only match once.
+            #for each condition; check if it's not been matched yet.  If it hasn't been matched yet; then do the regex check
+            
+            extruder_mode_match[0] = True
+            #sys.stderr.write("\n"+"Extruder Mode Match!  Lines:"+str(linenumber - last_line)+"\n")
+            #last_line = linenumber
+
             use_calpads = True
-            if extruder_mode_match.match(line).group(1) == "1": # mirror
+            if extruder_mode_match[1].match(line).group(1) == "1": # mirror
                 extruder_mode = 35
             else: # 2 = ditto
                 extruder_mode = 19
             continue
-        if setting_print_time.match(line):
-            time = setting_print_time.match(line).group(1).split() # this match in nnh nnm nns
-            seconds = 0
-            for part in time:
-                if matching_hours.match(part):
-                    hours = matching_hours.match(part).group(1)
-                    seconds += int(hours) * 60 * 60
-                if matching_minutes.match(part):
-                    minutes = matching_minutes.match(part).group(1)
-                    seconds += int(minutes) * 60
-                if matching_seconds.match(part):
-                    seconds += int(matching_seconds.match(part).group(1))
-            print_time_in_seconds = seconds
-            continue
-        if setting_filament_usage.match(line):
-            string = setting_filament_usage.match(line).group(1).split(", ") # this match in nnh nnm nns
-            for part in string:
-                if not extr_both_active and extr_left_active:
-                    filament_usage_in_mm_left = int(float(part)) # should be the only part
-                elif filament_usage_in_mm_right != 0:
-                    filament_usage_in_mm_left = int(float(part)) # should be on second loop now
-                else:
-                    filament_usage_in_mm_right = int(float(part)) # might be only part or first loop
-            continue
-        if setting_temps.match(line):
-            string = setting_temps.match(line).group(1).split(",") # this match in nnh nnm nns
-            for part in string:
-                if not extr_both_active and extr_left_active:
-                    left_extruder_temp = int(part) # should be the only part
-                elif right_extruder_temp != 0:
-                    left_extruder_temp = int(part) # should be on second loop now
-                else:
-                    right_extruder_temp = int(part) # might be only part or first loop
-            continue
-        if setting_layer_height.match(line):
-            layer_height_microns = int(float(setting_layer_height.match(line).group(1)) * 1000)
-            continue
-        if setting_shells.match(line):
-            number_perimeter_shells = int(setting_shells.match(line).group(1))
-            continue
-        if setting_speed.match(line):
-            print_speed = int(setting_speed.match(line).group(1))
-            continue
-        if setting_bed_temp.match(line):
-            platform_temp = int(setting_bed_temp.match(line).group(1))
-            continue
+
+
+
+
+#print("Going through list in reverse!")
+
+file_data_lines.reverse() 
+
+#last_line = 0
+
+#go through the data backwards; looking for the stuff that tends to be at the end of the header
+for linenumber,line in enumerate(file_data_lines):
+
+    #calculate percent completion and print it to the screen; for the piece of mind of the user
+    if linenumber%10000 == 0:
+        new_percent = int(50 + (linenumber/input_file_size*50))
+        sys.stderr.write('\r') #clear last percent print
+        sys.stderr.write(str(new_percent)+"%")
+        #sys.stderr.write(str(new_percent)+"%" + " Regex Status: " + str(setting_print_time[0]) + " " + str(setting_filament_usage[0]) + " " + str(setting_temps[0]) + " " + str(setting_layer_height[0]) + " " + str(setting_shells[0]) + " " + str(setting_speed[0]) + " " + str(setting_bed_temp[0]) + "\n")
+        sys.stderr.flush()
     
-fileinput.close() # ensure it is closed, so that we can read to it in binary mode
+    
+    #short-circuit iteration if we're all done.
+    if all([setting_print_time[0] , setting_filament_usage[0] , setting_temps[0] , setting_layer_height[0] , setting_shells[0] , setting_speed[0] , setting_bed_temp[0] ]):
+        sys.stderr.write('\r') #clear last percent print
+        sys.stderr.write("100%")
+        sys.stderr.flush()  
+        break
+
+
+
+    if not setting_print_time[0] and setting_print_time[1].match(line):
+        setting_print_time[0] = True
+        #sys.stderr.write("\n"+"Setting Print Time Match!  Lines:"+str(linenumber - last_line)+"\n")
+        #last_line = linenumber
+
+        time = setting_print_time[1].match(line).group(1).split() # this match in nnh nnm nns
+        seconds = 0
+        for part in time:
+            if matching_hours.match(part):
+                hours = matching_hours.match(part).group(1)
+                seconds += int(hours) * 60 * 60
+            if matching_minutes.match(part):
+                minutes = matching_minutes.match(part).group(1)
+                seconds += int(minutes) * 60
+            if matching_seconds.match(part):
+                seconds += int(matching_seconds.match(part).group(1))
+        print_time_in_seconds = seconds
+        continue
+    if not setting_filament_usage[0] and setting_filament_usage[1].match(line):
+        setting_filament_usage[0] = True
+        #sys.stderr.write("\n"+"Setting Filament Match!  Lines:"+str(linenumber - last_line)+"\n")
+        #last_line = linenumber
+
+        string = setting_filament_usage[1].match(line).group(1).split(", ") # this match in nnh nnm nns
+        for part in string:
+            if not extr_both_active and extr_left_active:
+                filament_usage_in_mm_left = int(float(part)) # should be the only part
+            elif filament_usage_in_mm_right != 0:
+                filament_usage_in_mm_left = int(float(part)) # should be on second loop now
+            else:
+                filament_usage_in_mm_right = int(float(part)) # might be only part or first loop
+        continue
+    if not setting_temps[0] and setting_temps[1].match(line):
+        setting_temps[0] = True
+        #sys.stderr.write("\n"+"Setter Temps Match!  Lines:"+str(linenumber - last_line)+"\n")
+        #last_line = linenumber
+
+        string = setting_temps[1].match(line).group(1).split(",") # this match in nnh nnm nns
+        for part in string:
+            if not extr_both_active and extr_left_active:
+                left_extruder_temp = int(part) # should be the only part
+            elif right_extruder_temp != 0:
+                left_extruder_temp = int(part) # should be on second loop now
+            else:
+                right_extruder_temp = int(part) # might be only part or first loop
+        continue
+    if not setting_layer_height[0] and setting_layer_height[1].match(line):
+        setting_layer_height[0] = True
+        #sys.stderr.write("\n"+"Setting Layer Height Match!  Lines:"+str(linenumber - last_line)+"\n")
+        #last_line = linenumber
+
+        layer_height_microns = int(float(setting_layer_height[1].match(line).group(1)) * 1000)
+        continue
+    if not setting_shells[0] and setting_shells[1].match(line):
+        setting_shells[0] = True
+        #sys.stderr.write("\n"+"Setting Shells Match!  Lines:"+str(linenumber - last_line)+"\n")
+        #last_line = linenumber
+
+        number_perimeter_shells = int(setting_shells[1].match(line).group(1))
+        continue
+    if not setting_speed[0] and setting_speed[1].match(line):
+        setting_speed[0] = True
+        #sys.stderr.write("\n"+"Setting Speed Match!  Lines:"+str(linenumber - last_line)+"\n")
+        #last_line = linenumber
+
+        print_speed = int(setting_speed[1].match(line).group(1))
+        continue
+    if not setting_bed_temp[0] and setting_bed_temp[1].match(line):
+        setting_bed_temp[0] = True
+        #sys.stderr.write("\n"+"Setting Bed Match!  Lines:"+str(linenumber - last_line)+"\n")
+        #last_line = linenumber
+
+        platform_temp = int(setting_bed_temp[1].match(line).group(1))
+        continue
+
+    
+
+
+
+print() #so the next line comes out cleanly    
+#fileinput.close() # ensure it is closed, so that we can read to it in binary mode
 # since we store the data in memory, and did not write back, file is empty, easy to prepend header
 
 #lets now start to process our additional_data
@@ -677,6 +800,7 @@ calPad_content = """;calPad A start Z0.20
 ;:G1 X-11.01 Y-14.60 E6.8712
 ;:G1 X-10.32 Y-14.73 E6.8967
 ;:G1 X-16.40 Y-8.65 E7.2084
+
 ;:G1 X-16.40 Y-8.09 E7.2287
 ;:G1 X-9.69 Y-14.80 E7.5727
 ;:G1 X-9.12 Y-14.80 E7.5934
@@ -887,11 +1011,13 @@ calPad_content = """;calPad A start Z0.20
 M109"""
 
 
-our_file = open(sys.argv[1], 'rb+')
+our_file = open(input_filename, 'wb') #since the output filename may be different (see above), use WRITE only.
 for binary_data in header_hex:
     our_file.write(binary_data)
+our_file.write("\n".encode('utf-8')) #force it onto a newline
     
 if use_calpads: #only required for ditto and mirror
     file_data = file_data.replace("M109", calPad_content, 1)
 
 our_file.write(file_data.encode('utf-8')) # add the actual gcode for the printer
+our_file.close()
