@@ -37,8 +37,8 @@ use_calpads = False
 
 extruder_match = [0,re.compile('^M6 T([0-9]+)')] #get which extruders are active
 extruder_mode_match = [0,re.compile('^M109 T([0-9])')] #match for ditto or mirror
-setting_print_time = [0,re.compile('^; estimated printing time \(normal mode\) = ([0-9hms ]*)')]
-setting_filament_usage = [0,re.compile('^; filament used \[mm\] = ([0-9., ]*)')]
+setting_print_time = [0,re.compile(r'^; estimated printing time \(normal mode\) = ([0-9hms ]*)')]
+setting_filament_usage = [0,re.compile(r'^; filament used \[mm\] = ([0-9., ]*)')]
 setting_layer_height = [0,re.compile('^; layer_height = ([0-9. ]*)')]
 setting_shells = [0,re.compile('^; perimeters = ([0-9]*)')]
 setting_speed = [0,re.compile('^; perimeter_speed = ([0-9]*)')]
