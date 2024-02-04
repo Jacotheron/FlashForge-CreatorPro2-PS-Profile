@@ -1,4 +1,4 @@
-#! /usr/bin/python3-64
+#! /usr/bin/python
 # ff-creator-post-processor.py
 
 # LICENSE & COPYRIGHT
@@ -11,12 +11,22 @@
 #
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+import importlib
+try:
+    importlib.import_module("PIL.Image")
+except ImportError:
+    import pip
+    pip.main(['install', "Pillow"])
+    globals()["PIL"] = importlib.import_module("PIL")
+finally:
+    from PIL import Image
+
+
 import fileinput
 import re
 import sys
 import base64
 from io import BytesIO
-from PIL import Image ## remember to install Pillow
 from struct import *
 import os #for getting the size of the file; and therefre being able to have a percent complete...
 
