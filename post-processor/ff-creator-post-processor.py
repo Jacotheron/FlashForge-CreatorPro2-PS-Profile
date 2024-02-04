@@ -27,7 +27,6 @@ import re
 import sys
 import base64
 from io import BytesIO
-from PIL import Image ## remember to install Pillow
 from struct import *
 import os #for getting the size of the file; and therefre being able to have a percent complete...
 
